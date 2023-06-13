@@ -19,7 +19,7 @@ df.event.value_counts()
 
 # Define custom function to calculate rating
 def calculate_rating(group):
- 
+
     relevant_maxn = {
         'product_clicked':5,
         'buy_stock':3,
@@ -30,13 +30,13 @@ def calculate_rating(group):
 
     # Mapping of values to ratings
     weight_dict = {
-        'product_clicked': 1, 
-        'stock_watchlist_initiated': 8, 
-        'buy_stock': 10, 
-        'sell_stock': 3, 
-        'product_detail_viewed':5, 
+        'product_clicked': 1,
+        'stock_watchlist_initiated': 8,
+        'buy_stock': 10,
+        'sell_stock': 3,
+        'product_detail_viewed':5,
         #'product_added':6
-        }  
+        }
 
     value_counts = group['event'].value_counts()
     #rating = min(value_counts.get('product_clicked',0), relevant_maxn['product_clicked']) * weight_dict['product_clicked'] + min(value_counts.get('stock_watchlist_initiated',0), relevant_maxn['stock_watchlist_initiated']) * weight_dict['stock_watchlist_initiated'] + min(value_counts.get('buy_stock',0), relevant_maxn['buy_stock']) * weight_dict['buy_stock'] + min(value_counts.get('sell_stock',0), relevant_maxn['sell_stock']) * weight_dict['sell_stock'] + min(value_counts.get('product_detail_viewed',0), relevant_maxn['product_detail_viewed']) * weight_dict['product_detail_viewed'] #+ value_counts.get('product_added',0) * weight_dict['product_added']
@@ -136,8 +136,9 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from implicit.als import AlternatingLeastSquares
 from implicit.nearest_neighbours import ItemItemRecommender
-from implicit.evaluation import precision_at_k, mean_average_precision_at_k
+from implicit.evaluation import precision_at_k, mean_average_precision_at_k, train_test_split
 from sklearn.preprocessing import LabelEncoder
+from itertools import product
 
 df_user = df.copy()
 
@@ -153,6 +154,52 @@ df_user
 
 sparse_item_user = csr_matrix((df_user['ratingScal'].astype(float), (df_user['stock_id'], df_user['username_id'])))
 sparse_user_item = csr_matrix((df_user['ratingScal'].astype(float), (df_user['username_id'], df_user['stock_id'])))
+
+(temp, test) = train_test_split(sparse_user_item, train_percentage=0.8, random_state=42)
+(train, valid) = train_test_split(temp, train_percentage=0.8, random_state=42)
+
+param_grid = {
+    'factors': [32, 64, 50, 128],
+    'regularization': [0.01, 0.1, 1.0],
+    'iterations': [10, 20, 30],
+    'alpha': [15, 20, 25]
+}
+
+best_precision = -1
+best_params = None
+
+for params in product(*param_grid.values()):
+    factors, regularization, iterations, alpha = params
+
+    # Train the collaborative filtering model
+    model = AlternatingLeastSquares(
+        factors=factors,
+        regularization=regularization,
+        iterations=iterations,
+        alpha=alpha,
+        random_state=42
+    )
+    model.fit(train)
+
+    # Evaluate the model on the validation set
+    precision = mean_average_precision_at_k(model, train, valid, K=5)
+
+    # Check if this is the best precision so far
+    if precision > best_precision:
+        best_precision = precision
+        best_params = params
+
+best_precision
+
+factors, regularization, iterations, alpha = best_params
+model = AlternatingLeastSquares(
+    factors=factors,
+    regularization=regularization,
+    iterations=iterations,
+    alpha=alpha,
+    random_state=42
+)
+model.fit(sparse_user_item)
 
 # Step 4: Collaborative Filtering Algorithm Selection
 model = AlternatingLeastSquares(factors=50, regularization=0.01, iterations=20, alpha=15, random_state=42)
@@ -380,7 +427,7 @@ def get_recom(df):
       stck_rec.append(dictionary[j['itemIndex']][0])
 
     stck_rec_all.append(stck_rec)
-    
+
   return stck_rec_all
 
 userRecs_df['recommendations_stock_name'] = get_recom(userRecs_df)
@@ -393,7 +440,9 @@ userRecs_df['recommendations'][userRecs_df['userIndex']==1].values
 
 """## Recommendation"""
 
-username = userRecs_df['username'][userRecs_df['userIndex']==1].values[0]
+username = userRecs_df['username'][userRecs_df['userIndex']==152].values[0]
+
+username
 
 inv = [i for i in check_df['stock_code'][check_df['username']==username].values]
 
@@ -404,6 +453,14 @@ recommendation = [i for i in not_inv if i not in inv]
 inv
 
 recommendation
+
+"""## Save and Load Model"""
+
+best_model.save('/content')
+
+best_model.write().overwrite().save('/content/model_als')
+
+best_model = ALSModel.load('/content/drive/MyDrive/model_als')
 
 """# Surprise"""
 
@@ -435,7 +492,7 @@ param_grid = {'k': [10, 20, 30, 50, 80],
               'min_k': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
               'sim_options': {'name': ['cosine'],
                               'user_based': [True]}
-               
+
              }
 
 cv = KFold(n_splits=5, random_state=42, shuffle=True)
