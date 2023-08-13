@@ -473,6 +473,8 @@ from surprise import Dataset, Reader
 from surprise import KNNBasic, accuracy
 from surprise.model_selection import cross_validate, train_test_split
 from collections import defaultdict
+from surprise import dump
+import os
 
 # Define the rating scale
 reader = Reader(rating_scale=(0, 5))
@@ -481,7 +483,7 @@ reader = Reader(rating_scale=(0, 5))
 data = Dataset.load_from_df(df[['username', 'stock_code', 'ratingScal']], reader)
 
 # Split the data into training and testing sets
-trainset, testset = train_test_split(data, test_size=0.2)
+trainset, testset = train_test_split(data, test_size=0.2, random_state=42)
 
 from surprise.model_selection import GridSearchCV
 from surprise import KNNBasic
@@ -516,6 +518,25 @@ best_algo.fit(data.build_full_trainset())
 #predictions = best_algo.test(testset)
 # Evaluate the performance of the algorithm
 #accuracy.rmse(predictions)
+
+# saving trained model
+
+model_filename = "./model.pickle"
+
+# Dump algorithm and reload it.
+file_name = os.path.expanduser(model_filename)
+dump.dump(file_name, algo=best_algo)
+
+print(model_filename)
+
+# load save model
+def load_model(model_filename):
+
+    file_name = os.path.expanduser(model_filename)
+    _, loaded_model = dump.load(file_name)
+    return loaded_model
+
+best_algo = load_model('/content/model.pickle')
 
 best_algo.predict('OKI', 'BEKS')
 
